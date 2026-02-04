@@ -243,6 +243,56 @@ nav button.active {
   margin-bottom: 12px;
   letter-spacing: 1px;
 }
+/* Task instruction box */
+.tutorial-task {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tutorial-task.pending {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--accent-amber);
+}
+.tutorial-task.pending::before {
+  content: '👉 ';
+}
+.tutorial-task.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--accent-green);
+  animation: feedbackPop 0.3s ease-out;
+}
+.tutorial-task.success::before {
+  content: '✅ ';
+}
+.tutorial-task.fail {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--accent-red);
+  animation: feedbackPop 0.3s ease-out;
+}
+.tutorial-task.fail::before {
+  content: '❌ ';
+}
+@keyframes feedbackPop {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.tutorial-task-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+  font-style: italic;
+}
+.tutorial-nav button.primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 .tutorial-nav {
   display: flex;
   gap: 8px;
@@ -1682,6 +1732,12 @@ console.<span class="function">log</span>(<span class="string">'Valid chain?'</s
     <div class="step-indicator" id="tutorialStepIndicator">STEP 1 OF 5</div>
     <h3 id="tutorialTitle">Welcome</h3>
     <p id="tutorialText">This is a tutorial step.</p>
+    <div id="tutorialTaskArea" style="display: none;">
+      <div class="tutorial-task pending" id="tutorialTaskBox">
+        <span id="tutorialTaskMsg">Do something...</span>
+        <div class="tutorial-task-hint" id="tutorialTaskHint"></div>
+      </div>
+    </div>
     <div class="tutorial-nav">
       <button id="tutorialPrev" onclick="tutorialPrevStep()">← Back</button>
       <button id="tutorialNext" class="primary" onclick="tutorialNextStep()">Next →</button>
@@ -2595,8 +2651,12 @@ function logNetwork(type, msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// TUTORIAL SYSTEM
+// TUTORIAL SYSTEM (interactive with task validation)
 // ═══════════════════════════════════════════════════════════
+
+// Task check polling handle
+let taskCheckInterval = null;
+let taskCompleted = false;
 
 const tutorials = {
   'blockchain-basics': {
@@ -2611,32 +2671,62 @@ const tutorials = {
       {
         target: '[data-section="simulator"]',
         title: 'Open the Simulator',
-        text: 'Click the Simulator tab to see a live blockchain in action. This is where you can add blocks, inspect them, and even tamper with data to see what happens.',
+        text: 'The Simulator is where you can see a live blockchain in action. Let\'s head there now.',
         position: 'bottom',
         action: () => document.querySelector('[data-section="simulator"]').click()
       },
       {
         target: '#chainVizCard',
         title: 'The Blockchain',
-        text: 'Here is your blockchain! It starts with a Genesis block (the first block). Each block is linked to the previous one through cryptographic hashes. Click any block to inspect it.',
+        text: 'Here is your blockchain! It starts with a Genesis block (the first block). Each block is linked to the previous one through cryptographic hashes.',
         position: 'bottom'
       },
       {
         target: '#newBlockCard',
-        title: 'Add New Blocks',
-        text: 'Type any data here and click "Mine & Add Block". The system will find a valid nonce (proof of work) and add a new block linked to the chain.',
-        position: 'right'
+        title: 'Add a Block',
+        text: 'This is where you create new blocks. Type some data into the textarea and click "Mine & Add Block" to add it to the chain.',
+        position: 'right',
+        task: {
+          instruction: 'Type data and click "Mine & Add Block" to add a new block.',
+          hint: 'Enter anything in the textarea, then press the blue button.',
+          check: () => blockchain.chain.length >= 2,
+          successMsg: 'Great job! You mined and added a new block to the chain!',
+          failMsg: 'Not quite — make sure you typed data and clicked the mine button.'
+        }
+      },
+      {
+        target: '#chainVizCard',
+        title: 'Inspect a Block',
+        text: 'Now click on any block in the chain to see its internal data in the Block Inspector on the right.',
+        position: 'bottom',
+        task: {
+          instruction: 'Click on any block in the chain visualization above.',
+          hint: 'Click one of the block cards in the chain.',
+          check: () => selectedBlock !== null,
+          successMsg: 'You opened the Block Inspector! You can see the hash, previous hash, nonce, and data.',
+          failMsg: 'Try clicking directly on one of the block rectangles in the chain.'
+        }
       },
       {
         target: '#blockInspector',
-        title: 'Inspect & Tamper',
-        text: 'After clicking a block above, you can inspect its contents here. Try editing the data — you\'ll see the block immediately becomes invalid because the hash no longer matches!',
-        position: 'left'
+        title: 'Tamper with a Block',
+        text: 'Now try editing the data field in the Block Inspector. This simulates what would happen if someone tried to alter a past block.',
+        position: 'left',
+        task: {
+          instruction: 'Edit the "Data" textarea in the Block Inspector to tamper with the block.',
+          hint: 'Change any character in the data field. The badge should turn red.',
+          check: () => {
+            const badge = document.getElementById('blockValidBadge');
+            return badge && badge.textContent.includes('Tampered');
+          },
+          successMsg: 'You broke the chain! The hash no longer matches, proving the block was altered. This is what makes blockchain immutable.',
+          failMsg: 'Try changing the text in the Data field. The block should show as "Tampered".'
+        }
       },
       {
         target: '#chainStats',
         title: 'Chain Statistics',
-        text: 'These stats show you the current state of the blockchain: how many blocks exist, whether the chain is valid, the mining difficulty, and total transactions. Tampering will turn the validity indicator red!',
+        text: 'These stats reflect the current state. Notice the chain may now show as invalid because of your tampering!',
         position: 'bottom'
       }
     ]
@@ -2654,28 +2744,48 @@ const tutorials = {
       {
         target: '#hashExplorer',
         title: 'Hash Explorer',
-        text: 'This is the Hash Explorer. Type anything in the input field and instantly see its SHA-256 hash. Notice how changing even a single character produces a completely different 64-character output!',
+        text: 'This is the Hash Explorer. It computes SHA-256 hashes in real time as you type.',
         position: 'top'
       },
       {
         target: '#hashExplorer',
-        title: 'The Avalanche Effect',
-        text: 'Try changing one letter. This "avalanche effect" is what makes blockchain secure — you can\'t reverse-engineer the input from the output, and even tiny changes are immediately detectable.',
-        position: 'top'
+        title: 'Try the Avalanche Effect',
+        text: 'Change the input text to see how even a single character change produces a completely different hash.',
+        position: 'top',
+        task: {
+          instruction: 'Change the text in the "Input Data" field and observe the hash change.',
+          hint: 'Add, remove, or change any character. Watch how the entire hash changes.',
+          check: () => {
+            const input = document.getElementById('hashInput');
+            return input && input.value !== 'blockchain';
+          },
+          successMsg: 'See how the entire 64-character hash changed? That\'s the avalanche effect — it makes any tampering instantly detectable!',
+          failMsg: 'Type something different in the input field to see the hash change.'
+        }
       },
       {
         target: '[data-section="code"]',
         title: 'See the Code',
-        text: 'Want to see how hashing works in code? Head to the Code Lab!',
+        text: 'Want to see how SHA-256 hashing works in code? Let\'s check the Code Lab.',
         position: 'bottom',
         action: () => document.querySelector('[data-section="code"]').click()
       },
       {
         target: '#codeTabs',
-        title: 'Step 2: Hashing',
-        text: 'Click the "2. Hashing" tab to see how SHA-256 is implemented using the Web Crypto API. You can run the code and see the output right here!',
+        title: 'Run the Hashing Code',
+        text: 'Click the "2. Hashing" tab, then click the "▶ Run" button to execute the code and see real hash outputs.',
         position: 'bottom',
-        action: () => document.querySelector('[data-codetab="step2"]').click()
+        action: () => document.querySelector('[data-codetab="step2"]').click(),
+        task: {
+          instruction: 'Click the "▶ Run" button to execute the hashing code.',
+          hint: 'Look for the small "▶ Run" button next to "hashing.js" above the code.',
+          check: () => {
+            const output = document.getElementById('output-step2');
+            return output && output.children.length > 0;
+          },
+          successMsg: 'You can see the different hashes for "Hello", "Hello!", and "Hello!!" — tiny input changes, completely different outputs!',
+          failMsg: 'Click the "▶ Run" button in the code header bar above the code block.'
+        }
       }
     ]
   },
@@ -2692,26 +2802,43 @@ const tutorials = {
       {
         target: '#miningConfig',
         title: 'Mining Configuration',
-        text: 'Set the difficulty level here. Difficulty determines how many leading zeros the hash must start with. Higher difficulty = exponentially more computation required!',
+        text: 'This panel lets you configure the mining parameters. Difficulty determines how many leading zeros the hash must have.',
         position: 'right'
       },
       {
         target: '#diffSelector',
-        title: 'Difficulty Levels',
-        text: 'Difficulty 1: hash must start with "0" (easy). Difficulty 4: hash must start with "0000" (very hard). In real Bitcoin, the difficulty adjusts automatically to maintain ~10 minute block times.',
-        position: 'bottom'
+        title: 'Set Difficulty',
+        text: 'Try changing the difficulty level. Higher difficulty means exponentially more computation.',
+        position: 'bottom',
+        task: {
+          instruction: 'Click a difficulty button to change the mining difficulty.',
+          hint: 'Click "2 — Medium" or any other difficulty level.',
+          check: () => miningDifficulty !== 1,
+          successMsg: 'Difficulty changed! With higher difficulty, mining takes more attempts to find a valid hash.',
+          failMsg: 'Click one of the difficulty buttons (2, 3, or 4).'
+        }
+      },
+      {
+        target: '#mineBtn',
+        title: 'Mine a Block!',
+        text: 'Now click "Start Mining" and watch the proof-of-work algorithm try thousands of nonces until it finds one that produces a hash with the required leading zeros.',
+        position: 'top',
+        task: {
+          instruction: 'Click "⛏️ Start Mining" and wait for it to find a valid nonce.',
+          hint: 'Click the green button. Mining may take a moment at higher difficulties.',
+          check: () => {
+            const output = document.getElementById('miningOutput');
+            return output && output.innerHTML.includes('Successfully Mined');
+          },
+          successMsg: 'Block mined! Check the results — see the nonce, attempt count, and the hash that starts with zeros. This is exactly what Bitcoin miners do!',
+          failMsg: 'Click the "Start Mining" button and wait for the mining process to complete.'
+        }
       },
       {
         target: '#miningResults',
         title: 'Mining Results',
-        text: 'After you click "Start Mining", this panel shows the winning nonce, how many attempts it took, and the final hash. Watch how higher difficulty dramatically increases attempts!',
+        text: 'Here you can see the winning nonce, how many attempts it took, the time elapsed, and the final valid hash. In real Bitcoin, miners do this billions of times per second!',
         position: 'left'
-      },
-      {
-        target: '#mineBtn',
-        title: 'Try It!',
-        text: 'Click "Start Mining" to watch the algorithm work. The console below will show you nonce attempts in real time. This is exactly what real miners do billions of times per second!',
-        position: 'top'
       }
     ]
   },
@@ -2721,21 +2848,48 @@ const tutorials = {
       {
         target: '[data-section="wallet"]',
         title: 'Wallet Simulator',
-        text: 'Let\'s explore digital wallets and transactions! Each wallet has a public address (like an account number) and a private key (like a password) for signing transactions.',
+        text: 'Let\'s explore digital wallets and transactions! Each wallet has a public address and a private key for signing transactions.',
         position: 'bottom',
         action: () => document.querySelector('[data-section="wallet"]').click()
       },
       {
         target: '#sec-wallet .section-header',
-        title: 'Create Wallets',
-        text: 'Click "+ New Wallet" to create wallets. Each wallet gets a unique address (generated from SHA-256), a public/private key pair, and starts with 100 BLC (BlockLab Coins).',
-        position: 'bottom'
+        title: 'Create Your First Wallet',
+        text: 'Click the "+ New Wallet" button to create a wallet. It will get a unique address, key pair, and 100 BLC starting balance.',
+        position: 'bottom',
+        task: {
+          instruction: 'Click "+ New Wallet" to create your first wallet.',
+          hint: 'Look for the blue "+ New Wallet" button in the top right.',
+          check: () => wallets.length >= 1,
+          successMsg: 'Wallet created! It has a public address (for receiving) and a private key (for signing). The private key must be kept secret!',
+          failMsg: 'Click the blue "+ New Wallet" button at the top of the page.'
+        }
       },
       {
-        target: '#sec-wallet',
-        title: 'Send Transactions',
-        text: 'Once you have 2+ wallets, you can send transactions between them. Each transaction is digitally signed with the sender\'s private key and added as a new block to the chain!',
-        position: 'top'
+        target: '#sec-wallet .section-header',
+        title: 'Create a Second Wallet',
+        text: 'You need at least two wallets to send a transaction. Create another one!',
+        position: 'bottom',
+        task: {
+          instruction: 'Click "+ New Wallet" again to create a second wallet.',
+          hint: 'Click the same button again to add another wallet.',
+          check: () => wallets.length >= 2,
+          successMsg: 'Now you have two wallets! You can send funds between them.',
+          failMsg: 'Click "+ New Wallet" one more time.'
+        }
+      },
+      {
+        target: '#sendTxCard',
+        title: 'Send a Transaction',
+        text: 'Now select a sender, receiver, and amount, then click "Sign & Send Transaction". The transaction will be digitally signed and added to the blockchain.',
+        position: 'top',
+        task: {
+          instruction: 'Set an amount and click "Sign & Send Transaction".',
+          hint: 'Pick a From and To wallet, enter an amount, and click the green button.',
+          check: () => transactions.length >= 1,
+          successMsg: 'Transaction sent! It was signed with the sender\'s private key and recorded as a new block on the chain. Check the balances — they updated!',
+          failMsg: 'Select different From/To wallets, enter an amount, and click "Sign & Send Transaction".'
+        }
       }
     ]
   },
@@ -2745,21 +2899,60 @@ const tutorials = {
       {
         target: '[data-section="network"]',
         title: 'Peer Network',
-        text: 'Let\'s see how multiple nodes maintain consensus! In a real blockchain, thousands of nodes must agree on the state of the chain.',
+        text: 'Let\'s see how multiple nodes maintain consensus! In a real blockchain, thousands of nodes must agree on the chain state.',
         position: 'bottom',
         action: () => document.querySelector('[data-section="network"]').click()
       },
       {
         target: '#networkVizCard',
-        title: 'Network Topology',
-        text: 'This visualization shows network nodes and their connections. The green node is yours. Click any node to inspect its chain state. All nodes should have identical copies of the blockchain!',
+        title: 'Your Node',
+        text: 'The green circle is your node. In a decentralized network, every node keeps a full copy of the blockchain.',
         position: 'bottom'
       },
       {
         target: '#sec-network .section-header',
-        title: 'Network Actions',
-        text: '"Add Node" creates new peers. "Broadcast Block" sends your latest block to all peers. "Simulate Fork" creates a competing chain to show how consensus resolves conflicts!',
-        position: 'bottom'
+        title: 'Add Peer Nodes',
+        text: 'Add some peers to the network so we can simulate multi-node communication.',
+        position: 'bottom',
+        task: {
+          instruction: 'Click "+ Add Node" at least 2 times to add peer nodes.',
+          hint: 'Click the blue "+ Add Node" button twice.',
+          check: () => networkNodes.length >= 3,
+          successMsg: 'Your network has multiple peers! Each one maintains its own copy of the blockchain.',
+          failMsg: 'Click "+ Add Node" until you have at least 3 total nodes (including yours).'
+        }
+      },
+      {
+        target: '#sec-network .section-header',
+        title: 'Broadcast a Block',
+        text: 'Click "📡 Broadcast Block" to send your latest block to all peers. Watch the network log to see nodes receiving and verifying it.',
+        position: 'bottom',
+        task: {
+          instruction: 'Click "📡 Broadcast Block" to propagate your chain to peers.',
+          hint: 'Click the "📡 Broadcast Block" button and watch the network log.',
+          check: () => {
+            const log = document.getElementById('networkLog');
+            return log && log.innerHTML.includes('Consensus reached');
+          },
+          successMsg: 'All nodes received the block and reached consensus! This is how decentralized agreement works.',
+          failMsg: 'Click "📡 Broadcast Block" and wait for all nodes to sync.'
+        }
+      },
+      {
+        target: '#sec-network .section-header',
+        title: 'Simulate a Fork',
+        text: 'Now try "⑂ Simulate Fork" to see what happens when nodes disagree. The longest valid chain wins!',
+        position: 'bottom',
+        task: {
+          instruction: 'Click "⑂ Simulate Fork" and watch how the network resolves it.',
+          hint: 'Click the red "⑂ Simulate Fork" button and watch the log.',
+          check: () => {
+            const log = document.getElementById('networkLog');
+            return log && log.innerHTML.includes('Fork resolved');
+          },
+          successMsg: 'The fork was resolved! The network adopted the longest valid chain — this is the core consensus mechanism that makes blockchain trustless.',
+          failMsg: 'Click "⑂ Simulate Fork" and wait for the fork resolution to complete.'
+        }
       }
     ]
   },
@@ -2769,27 +2962,73 @@ const tutorials = {
       {
         target: '[data-section="code"]',
         title: 'Code Lab',
-        text: 'Welcome to Code Lab! Here you\'ll build a complete blockchain from scratch in JavaScript, step by step. Each tab contains working code you can run and learn from.',
+        text: 'Welcome to Code Lab! Here you\'ll build a complete blockchain from scratch in JavaScript, step by step.',
         position: 'bottom',
         action: () => document.querySelector('[data-section="code"]').click()
       },
       {
         target: '#codeTabs',
         title: 'Step-by-Step Tabs',
-        text: 'Work through tabs 1-6: Block Class → Hashing → Blockchain → Mining → Validation → Full Example. Each step builds on the previous one.',
+        text: 'Each tab builds on the previous one: Block Class → Hashing → Blockchain → Mining → Validation → Full Example.',
         position: 'bottom'
       },
       {
         target: '#panel-step1',
-        title: 'Step 1: The Block',
-        text: 'Start here! A Block is the fundamental unit. It has an index, timestamp, data, previousHash (linking it to the chain), a nonce (for mining), and its own hash. Click "▶ Run" to execute!',
-        position: 'top'
+        title: 'Step 1: The Block Class',
+        text: 'Read the code — a Block has an index, timestamp, data, previousHash, nonce, and hash. Now run it to see a genesis block created!',
+        position: 'top',
+        action: () => document.querySelector('[data-codetab="step1"]').click(),
+        task: {
+          instruction: 'Click "▶ Run" to execute the Block class code and create a genesis block.',
+          hint: 'Find the "▶ Run" button in the code header bar.',
+          check: () => {
+            const output = document.getElementById('output-step1');
+            return output && output.children.length > 0;
+          },
+          successMsg: 'You created your first Block object! Notice it has all the properties: index, data, previousHash, nonce, and hash.',
+          failMsg: 'Click the "▶ Run" button above the code block.'
+        }
       },
       {
         target: '#codeTabs',
-        title: 'Keep Going!',
-        text: 'Work through each tab, running the code as you go. By step 6, you\'ll have a complete ~60-line blockchain you can copy and use anywhere. The "📋 Copy" button gives you the full implementation!',
-        position: 'bottom'
+        title: 'Step 3: The Blockchain',
+        text: 'Now let\'s link blocks together into a chain. Click the "3. Blockchain" tab and run the code.',
+        position: 'bottom',
+        action: () => document.querySelector('[data-codetab="step3"]').click(),
+        task: {
+          instruction: 'Click "▶ Run" to create a blockchain with multiple linked blocks.',
+          hint: 'Find the "▶ Run" button for the blockchain.js code.',
+          check: () => {
+            const output = document.getElementById('output-step3');
+            return output && output.children.length > 0;
+          },
+          successMsg: 'You built a 3-block chain! Each block\'s hash depends on the previous block, linking them together cryptographically.',
+          failMsg: 'Click the "▶ Run" button in the code header.'
+        }
+      },
+      {
+        target: '#codeTabs',
+        title: 'Step 5: Validation & Tampering',
+        text: 'The final key concept — validating chain integrity and detecting tampering. Run this code to see what happens when someone alters a block.',
+        position: 'bottom',
+        action: () => document.querySelector('[data-codetab="step5"]').click(),
+        task: {
+          instruction: 'Click "▶ Run" to validate a chain, then watch it detect tampering.',
+          hint: 'Run the validation code to see integrity checks in action.',
+          check: () => {
+            const output = document.getElementById('output-step5');
+            return output && output.innerHTML.includes('Tampering');
+          },
+          successMsg: 'The validation caught the tampering! This proves that once data is on the blockchain, any modification is detectable. You now understand the core of blockchain technology!',
+          failMsg: 'Click "▶ Run" and wait for both the valid and tampered checks to complete.'
+        }
+      },
+      {
+        target: '#codeTabs',
+        title: 'Full Implementation',
+        text: 'Tab 6 has the complete blockchain in ~60 lines of JavaScript. Click "📋 Copy" to grab the full code and use it anywhere!',
+        position: 'bottom',
+        action: () => document.querySelector('[data-codetab="step6"]').click()
       }
     ]
   }
@@ -2808,7 +3047,8 @@ document.querySelectorAll('.tutorial-item').forEach(item => {
 function startTutorial(id) {
   currentTutorial = tutorials[id];
   currentStep = 0;
-  // Scroll to top so the first positioning works cleanly
+  taskCompleted = false;
+  clearTaskCheck();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   document.getElementById('tutorialOverlay').style.display = 'block';
   setTimeout(() => showTutorialStep(), 300);
@@ -2819,13 +3059,15 @@ function showTutorialStep() {
     endTutorial();
     return;
   }
-  
+
+  taskCompleted = false;
+  clearTaskCheck();
+
   const step = currentTutorial.steps[currentStep];
-  
+
   // Execute action if any (e.g. switching tabs)
   if (step.action) {
     step.action();
-    // Wait for DOM update + section animation
     setTimeout(() => positionTutorial(step), 350);
   } else {
     positionTutorial(step);
@@ -2840,12 +3082,11 @@ function positionTutorial(step) {
     return;
   }
 
-  // Scroll the target into view FIRST, then position after scroll settles
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  // Wait for scroll to finish, then position using viewport-relative coords
   setTimeout(() => {
     placeOverlayElements(target, step);
+    setupTask(step);
   }, 450);
 }
 
@@ -2855,19 +3096,17 @@ function placeOverlayElements(target, step) {
   const tooltip = document.getElementById('tutorialTooltip');
   const pad = 8;
 
-  // Highlight — fixed position, so use viewport coords directly
   highlight.style.left = (rect.left - pad) + 'px';
   highlight.style.top = (rect.top - pad) + 'px';
   highlight.style.width = (rect.width + pad * 2) + 'px';
   highlight.style.height = (rect.height + pad * 2) + 'px';
 
-  // Tooltip — measure it first, then place it
   tooltip.style.visibility = 'hidden';
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
   const tooltipRect = tooltip.getBoundingClientRect();
   const tw = tooltipRect.width || 380;
-  const th = tooltipRect.height || 180;
+  const th = tooltipRect.height || 220;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const gap = 16;
@@ -2878,7 +3117,6 @@ function placeOverlayElements(target, step) {
     case 'bottom':
       tooltipLeft = rect.left + rect.width / 2 - tw / 2;
       tooltipTop = rect.bottom + pad + gap;
-      // If it would go below viewport, flip to top
       if (tooltipTop + th > vh - gap) {
         tooltipTop = rect.top - pad - gap - th;
       }
@@ -2886,7 +3124,6 @@ function placeOverlayElements(target, step) {
     case 'top':
       tooltipLeft = rect.left + rect.width / 2 - tw / 2;
       tooltipTop = rect.top - pad - gap - th;
-      // If it would go above viewport, flip to bottom
       if (tooltipTop < gap) {
         tooltipTop = rect.bottom + pad + gap;
       }
@@ -2910,7 +3147,6 @@ function placeOverlayElements(target, step) {
       tooltipTop = rect.bottom + pad + gap;
   }
 
-  // Clamp to viewport
   tooltipLeft = Math.max(gap, Math.min(tooltipLeft, vw - tw - gap));
   tooltipTop = Math.max(gap, Math.min(tooltipTop, vh - th - gap));
 
@@ -2918,12 +3154,11 @@ function placeOverlayElements(target, step) {
   tooltip.style.top = tooltipTop + 'px';
   tooltip.style.visibility = 'visible';
 
-  // Re-trigger entrance animation
   tooltip.classList.remove('animate-in');
   void tooltip.offsetWidth;
   tooltip.classList.add('animate-in');
 
-  // Update content
+  // Update step indicator & text
   document.getElementById('tutorialStepIndicator').textContent =
     `STEP ${currentStep + 1} OF ${currentTutorial.steps.length} — ${currentTutorial.name.toUpperCase()}`;
   document.getElementById('tutorialTitle').textContent = step.title;
@@ -2932,10 +3167,92 @@ function placeOverlayElements(target, step) {
   // Update nav buttons
   document.getElementById('tutorialPrev').style.display = currentStep === 0 ? 'none' : 'inline-flex';
   const nextBtn = document.getElementById('tutorialNext');
-  nextBtn.textContent = currentStep === currentTutorial.steps.length - 1 ? 'Finish ✓' : 'Next →';
+  const isLast = currentStep === currentTutorial.steps.length - 1;
+  nextBtn.textContent = isLast ? 'Finish ✓' : 'Next →';
 }
 
-// Reposition on scroll / resize so highlight stays glued to its target
+// ═══════════════════════════════════════════════════════════
+// TASK SYSTEM
+// ═══════════════════════════════════════════════════════════
+
+function setupTask(step) {
+  const taskArea = document.getElementById('tutorialTaskArea');
+  const taskBox = document.getElementById('tutorialTaskBox');
+  const taskMsg = document.getElementById('tutorialTaskMsg');
+  const taskHint = document.getElementById('tutorialTaskHint');
+  const nextBtn = document.getElementById('tutorialNext');
+
+  clearTaskCheck();
+
+  if (!step.task) {
+    // No task — show normal Next button, hide task area
+    taskArea.style.display = 'none';
+    nextBtn.disabled = false;
+    return;
+  }
+
+  // Show task area in pending state
+  taskArea.style.display = 'block';
+  taskBox.className = 'tutorial-task pending';
+  taskMsg.textContent = step.task.instruction;
+  taskHint.textContent = step.task.hint || '';
+  taskHint.style.display = step.task.hint ? 'block' : 'none';
+
+  // Disable Next button until task is done
+  nextBtn.disabled = true;
+  taskCompleted = false;
+
+  // If already satisfied (e.g. user already did it before), pass immediately
+  if (step.task.check()) {
+    onTaskSuccess(step);
+    return;
+  }
+
+  // Poll for task completion
+  taskCheckInterval = setInterval(() => {
+    if (!currentTutorial) { clearTaskCheck(); return; }
+    try {
+      if (step.task.check()) {
+        onTaskSuccess(step);
+      }
+    } catch (e) {
+      // check function errored, keep polling
+    }
+  }, 400);
+}
+
+function onTaskSuccess(step) {
+  clearTaskCheck();
+  taskCompleted = true;
+
+  const taskBox = document.getElementById('tutorialTaskBox');
+  const taskMsg = document.getElementById('tutorialTaskMsg');
+  const taskHint = document.getElementById('tutorialTaskHint');
+  const nextBtn = document.getElementById('tutorialNext');
+
+  taskBox.className = 'tutorial-task success';
+  taskMsg.textContent = step.task.successMsg || 'Well done!';
+  taskHint.style.display = 'none';
+  nextBtn.disabled = false;
+
+  // Re-measure tooltip position since content changed
+  const target = document.querySelector(step.target);
+  if (target) {
+    setTimeout(() => placeOverlayElements(target, step), 50);
+  }
+}
+
+function clearTaskCheck() {
+  if (taskCheckInterval) {
+    clearInterval(taskCheckInterval);
+    taskCheckInterval = null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCROLL / RESIZE REPOSITIONING
+// ═══════════════════════════════════════════════════════════
+
 let repositionRAF = null;
 function onScrollOrResize() {
   if (!currentTutorial) return;
@@ -2949,9 +3266,17 @@ function onScrollOrResize() {
   });
 }
 window.addEventListener('scroll', onScrollOrResize, { passive: true });
-window.addEventListener('resize', onScrollOrResize)
+window.addEventListener('resize', onScrollOrResize);
+
+// ═══════════════════════════════════════════════════════════
+// TUTORIAL NAVIGATION
+// ═══════════════════════════════════════════════════════════
 
 function tutorialNextStep() {
+  const step = currentTutorial && currentTutorial.steps[currentStep];
+  // If step has a task and it's not completed, don't advance
+  if (step && step.task && !taskCompleted) return;
+
   currentStep++;
   if (currentStep >= currentTutorial.steps.length) {
     endTutorial();
@@ -2968,9 +3293,13 @@ function tutorialPrevStep() {
 }
 
 function endTutorial() {
+  clearTaskCheck();
+  taskCompleted = false;
   currentTutorial = null;
   currentStep = 0;
   document.getElementById('tutorialOverlay').style.display = 'none';
+  document.getElementById('tutorialTaskArea').style.display = 'none';
+  document.getElementById('tutorialNext').disabled = false;
 }
 
 document.getElementById('tutorialBackdrop').addEventListener('click', endTutorial);
