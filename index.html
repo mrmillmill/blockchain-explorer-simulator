@@ -181,11 +181,11 @@ nav button.active {
 .tutorial-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: transparent;
   pointer-events: all;
 }
 .tutorial-highlight {
-  position: absolute;
+  position: fixed;
   border: 2px solid var(--accent-cyan);
   border-radius: var(--radius);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65), 0 0 30px rgba(6, 182, 212, 0.4);
@@ -206,7 +206,7 @@ nav button.active {
   50% { opacity: 0.4; }
 }
 .tutorial-tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 1002;
   background: var(--bg-elevated);
   border: 1px solid var(--accent-cyan);
@@ -215,6 +215,8 @@ nav button.active {
   max-width: 380px;
   pointer-events: all;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(6, 182, 212, 0.1);
+}
+.tutorial-tooltip.animate-in {
   animation: tooltipIn 0.3s ease-out;
 }
 @keyframes tooltipIn {
@@ -2806,8 +2808,10 @@ document.querySelectorAll('.tutorial-item').forEach(item => {
 function startTutorial(id) {
   currentTutorial = tutorials[id];
   currentStep = 0;
+  // Scroll to top so the first positioning works cleanly
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   document.getElementById('tutorialOverlay').style.display = 'block';
-  showTutorialStep();
+  setTimeout(() => showTutorialStep(), 300);
 }
 
 function showTutorialStep() {
@@ -2818,11 +2822,11 @@ function showTutorialStep() {
   
   const step = currentTutorial.steps[currentStep];
   
-  // Execute action if any
+  // Execute action if any (e.g. switching tabs)
   if (step.action) {
     step.action();
-    // Wait for DOM update
-    setTimeout(() => positionTutorial(step), 100);
+    // Wait for DOM update + section animation
+    setTimeout(() => positionTutorial(step), 350);
   } else {
     positionTutorial(step);
   }
@@ -2835,65 +2839,117 @@ function positionTutorial(step) {
     showTutorialStep();
     return;
   }
-  
+
+  // Scroll the target into view FIRST, then position after scroll settles
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Wait for scroll to finish, then position using viewport-relative coords
+  setTimeout(() => {
+    placeOverlayElements(target, step);
+  }, 450);
+}
+
+function placeOverlayElements(target, step) {
   const rect = target.getBoundingClientRect();
   const highlight = document.getElementById('tutorialHighlight');
   const tooltip = document.getElementById('tutorialTooltip');
-  
-  // Position highlight
   const pad = 8;
-  highlight.style.left = (rect.left - pad + window.scrollX) + 'px';
-  highlight.style.top = (rect.top - pad + window.scrollY) + 'px';
+
+  // Highlight — fixed position, so use viewport coords directly
+  highlight.style.left = (rect.left - pad) + 'px';
+  highlight.style.top = (rect.top - pad) + 'px';
   highlight.style.width = (rect.width + pad * 2) + 'px';
   highlight.style.height = (rect.height + pad * 2) + 'px';
-  
-  // Position tooltip
-  const tooltipWidth = 380;
+
+  // Tooltip — measure it first, then place it
+  tooltip.style.visibility = 'hidden';
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const tw = tooltipRect.width || 380;
+  const th = tooltipRect.height || 180;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const gap = 16;
+
   let tooltipLeft, tooltipTop;
-  
+
   switch (step.position) {
     case 'bottom':
-      tooltipLeft = rect.left + rect.width / 2 - tooltipWidth / 2;
-      tooltipTop = rect.bottom + 20 + window.scrollY;
+      tooltipLeft = rect.left + rect.width / 2 - tw / 2;
+      tooltipTop = rect.bottom + pad + gap;
+      // If it would go below viewport, flip to top
+      if (tooltipTop + th > vh - gap) {
+        tooltipTop = rect.top - pad - gap - th;
+      }
       break;
     case 'top':
-      tooltipLeft = rect.left + rect.width / 2 - tooltipWidth / 2;
-      tooltipTop = rect.top - 180 + window.scrollY;
+      tooltipLeft = rect.left + rect.width / 2 - tw / 2;
+      tooltipTop = rect.top - pad - gap - th;
+      // If it would go above viewport, flip to bottom
+      if (tooltipTop < gap) {
+        tooltipTop = rect.bottom + pad + gap;
+      }
       break;
     case 'left':
-      tooltipLeft = rect.left - tooltipWidth - 20;
-      tooltipTop = rect.top + window.scrollY;
+      tooltipLeft = rect.left - pad - gap - tw;
+      tooltipTop = rect.top + rect.height / 2 - th / 2;
+      if (tooltipLeft < gap) {
+        tooltipLeft = rect.right + pad + gap;
+      }
       break;
     case 'right':
-      tooltipLeft = rect.right + 20;
-      tooltipTop = rect.top + window.scrollY;
+      tooltipLeft = rect.right + pad + gap;
+      tooltipTop = rect.top + rect.height / 2 - th / 2;
+      if (tooltipLeft + tw > vw - gap) {
+        tooltipLeft = rect.left - pad - gap - tw;
+      }
       break;
     default:
-      tooltipLeft = rect.left;
-      tooltipTop = rect.bottom + 20 + window.scrollY;
+      tooltipLeft = rect.left + rect.width / 2 - tw / 2;
+      tooltipTop = rect.bottom + pad + gap;
   }
-  
-  // Keep on screen
-  tooltipLeft = Math.max(16, Math.min(tooltipLeft, window.innerWidth - tooltipWidth - 16));
-  tooltipTop = Math.max(16, tooltipTop);
-  
+
+  // Clamp to viewport
+  tooltipLeft = Math.max(gap, Math.min(tooltipLeft, vw - tw - gap));
+  tooltipTop = Math.max(gap, Math.min(tooltipTop, vh - th - gap));
+
   tooltip.style.left = tooltipLeft + 'px';
   tooltip.style.top = tooltipTop + 'px';
-  
+  tooltip.style.visibility = 'visible';
+
+  // Re-trigger entrance animation
+  tooltip.classList.remove('animate-in');
+  void tooltip.offsetWidth;
+  tooltip.classList.add('animate-in');
+
   // Update content
-  document.getElementById('tutorialStepIndicator').textContent = 
+  document.getElementById('tutorialStepIndicator').textContent =
     `STEP ${currentStep + 1} OF ${currentTutorial.steps.length} — ${currentTutorial.name.toUpperCase()}`;
   document.getElementById('tutorialTitle').textContent = step.title;
   document.getElementById('tutorialText').textContent = step.text;
-  
+
   // Update nav buttons
   document.getElementById('tutorialPrev').style.display = currentStep === 0 ? 'none' : 'inline-flex';
   const nextBtn = document.getElementById('tutorialNext');
   nextBtn.textContent = currentStep === currentTutorial.steps.length - 1 ? 'Finish ✓' : 'Next →';
-  
-  // Scroll target into view
-  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+
+// Reposition on scroll / resize so highlight stays glued to its target
+let repositionRAF = null;
+function onScrollOrResize() {
+  if (!currentTutorial) return;
+  if (repositionRAF) cancelAnimationFrame(repositionRAF);
+  repositionRAF = requestAnimationFrame(() => {
+    const step = currentTutorial.steps[currentStep];
+    if (!step) return;
+    const target = document.querySelector(step.target);
+    if (!target) return;
+    placeOverlayElements(target, step);
+  });
+}
+window.addEventListener('scroll', onScrollOrResize, { passive: true });
+window.addEventListener('resize', onScrollOrResize)
 
 function tutorialNextStep() {
   currentStep++;
