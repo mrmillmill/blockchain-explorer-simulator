@@ -1,0 +1,11 @@
+{
+  "name": "blocklab",
+  "version": "1.0.0",
+  "description": "Interactive Blockchain Learning Platform — Learn, simulate, and build blockchains in the browser",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "keywords": ["blockchain", "education", "simulator", "interactive", "learning"],
+  "license": "MIT"
+}
